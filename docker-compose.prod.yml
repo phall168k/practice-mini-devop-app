@@ -1,0 +1,160 @@
+services:
+  # PostgreSQL
+  devop-db-prod:
+    image: postgres:16-alpine
+    container_name: devop-db-prod
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+    volumes:
+      - devop_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal_network
+    restart: unless-stopped
+  
+  # Redis
+  devop-redis-prod:
+    image: redis:7-alpine 
+    container_name: devop-redis-prod
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "everysec",
+        "--requirepass",
+        "${REDIS_PASSWORD}",
+        "--maxmemory",
+        "512mb",
+        "--maxmemory-policy",
+        "allkeys-lru"
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TZ: Asia/Phnom_Penh
+    volumes:
+      - devop_redis_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD", 
+          "redis-cli", 
+          "-a", 
+          "${REDIS_PASSWORD}", 
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - internal_network
+    restart: unless-stopped
+
+# Nest API
+  devop-nest-prod:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: devop-nest-prod
+    env_file:
+      - ./backend/.env.prod
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:${API_PORT}/api/health').then((r) => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1));",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      devop-db-prod:
+        condition: service_healthy
+      devop-redis-prod:
+        condition: service_healthy
+    networks:
+      - internal_network
+    restart: unless-stopped
+
+# Nuxt APP
+  devop-nuxt-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: devop-nuxt-prod
+    env_file:
+      - ./frontend/.env.prod
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      devop-nest-prod:
+        condition: service_healthy
+    networks:
+      - internal_network
+    restart: unless-stopped
+
+# Nginx
+  devop-nginx-prod:
+    image: nginx:1.27-alpine
+    container_name: devop-nginx-prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      devop-nuxt-prod:
+        condition: service_healthy
+    networks:
+      - internal_network
+      - external_network
+    restart: unless-stopped
+    
+  
+volumes:
+  devop_postgres_data:
+  devop_redis_data:
+
+networks:
+  internal_network:
+    driver: bridge
+    internal: true
+  external_network:
+    driver: bridge
+  
