@@ -55,7 +55,7 @@
 </script>
 
 <template>
-    <h1>User Management</h1>
+    <h1>User Managements</h1>
     <form @submit.prevent="handleSubmit">
 
         <div>
