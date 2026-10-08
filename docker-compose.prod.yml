@@ -72,9 +72,10 @@ services:
 
 # Nest API
   devop-nest-prod:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
+    # build:
+    #   context: ./backend
+    #   dockerfile: Dockerfile.prod
+    image: phall168k/mini-app-backend:latest
     container_name: devop-nest-prod
     env_file:
       - ./backend/.env.prod
@@ -103,9 +104,7 @@ services:
 
 # Nuxt APP
   devop-nuxt-prod:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
+    image: phall168k/mini-app-frontend:latest
     container_name: devop-nuxt-prod
     env_file:
       - ./frontend/.env.prod
